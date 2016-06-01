@@ -297,7 +297,22 @@ protected:
 		ArrayBase<T>::count = newCount;
 	}
 	void ReleaseUnnecessaryBuffer(int previousCount){
-		
+		int _count = previousCount - ArrayBase<T>::count;
+		if (ArrayBase<T>::buffer && _count > 0){
+			ListStore<T, POD<T>::Result>::ClearObjects(ArrayBase<T>::buffer + ArrayBase<T>::count, 
+													   _count);
+		}
+		if (lessMemoryMode && ArrayBase<T>::count <= previousCount / 2){
+			int newCapacity = 5 / 8 * capacity;
+
+			T* newBuffer = new T[newCapacity];
+			ListStore<T, POD<T>::Result>::CopyObjects(newBuffer,
+													  ArrayBase<T>::buffer,
+													  ArrayBase<T>::count);
+			delete[] ArrayBase<T>::buffer;
+			capacity = newCapacity;
+			ArrayBase<T>::buffer = newBuffer;
+		}
 	}
 public:
 	ListBase(){
@@ -321,7 +336,7 @@ public:
 												  ArrayBase<T>::count-index-1
 												  );
 		ArrayBase<T>::count--;
-		//
+		ReleaseUnnecessaryBuffer(previousCount);
 		return true;
 	}
 	bool RemoveRange(int index, int _count){
@@ -333,20 +348,21 @@ public:
 												  ArrayBase<T>::count - index -_count
 												  );
 		ArrayBase<T>::count -= _count;
-		//
+		ReleaseUnnecessaryBuffer(previousCount);
 		return true;
 	}
 	bool Clear(){
-		capacity = 0;
+		int previousCount = ArrayBase<T>::count;
+		ArrayBase<T>::count = 0;
 		if (lessMemoryMode){
-			ListStore<T, POD<T>::Result>::Clear(ArrayBase<T>::buffer,
-												ArrayBase<T>::count);
-
+			delete[] ArrayBase<T>::buffer;
+			ArrayBase<T>::buffer = 0;
 		}
 		else
 		{
-
+			ReleaseUnnecessaryBuffer(previousCount);
 		}
+		return true;
 	}
 };
 
