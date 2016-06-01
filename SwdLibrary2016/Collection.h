@@ -1,6 +1,8 @@
 #ifndef _COLLECTION_H
 #define _COLLECTION_H
 #include <iostream>
+#include "Common.h"
+
 class Object
 {
 public:
@@ -140,9 +142,27 @@ public:
 	}
 };
 /// Why virtual inherits?
+/// Because it's a interface,allow multiple inheritance
 template<typename T>
 class IEnumerator : public virtual Interface{
 	///可枚举类型的基本操作：Clone,Current,Index,Next,Reset,Evalated
+public:
+	typedef T ElementType;
+
+	virtual IEnumerator<T>* Clone()const = 0;
+	virtual const T& Current()const = 0;
+	virtual int Index() const = 0;
+	virtual bool Next()=0;
+	virtual void Reset()=0;
+	virtual bool Evalated()const{ return false; };
+};
+
+template<typename T> 
+class IEnumerable : public virtual Interface{
+public:
+	typedef T ElementType;
+	virtual IEnumerator<T>* CreateEnumerator()const = 0;
+
 };
 
 template<typename T,bool PODType>
@@ -187,4 +207,148 @@ protected:
 		
 	}
 };
+template<typename T>
+class ArrayBase abstract : public ListStore<T,POD<T>::Result>, public virtual IEnumerable<T>{
+protected:
+	class Enumerator : public Object, public virtual IEnumerator < T > {
+	protected:
+		const ArrayBase<T>* container;
+		int index;
+	public:
+		Enumerator(const ArrayBase<T>* _container, int _index = -1){
+			container = _container;
+			index = _index;
+		}
+		IEnumerator<T>* Clone()const{
+			return new Enumerator(container,index);
+		}
+		const T& Current()const{
+			return container->Get(index);
+		}
+		int Index() const{
+			return index;
+		}
+		bool Next(){
+			index++;
+			return index>=0 && index < container->Count();
+		}
+		void Reset(){
+			index = -1;
+		}
+
+	};
+	T* buffer;
+	int count;
+public:
+	ArrayBase()
+		:buffer(0), count(0)
+	{}
+	///CreateEnumerator,Count,Get,operator[]
+	IEnumerator<T>* CreateEnumerator()
+	{
+		return;
+	}
+	int Count()const{
+		return count;
+	}
+	const T& Get(int index){
+		CHECK_ERROR(index >= 0 && index < count, L"ArrayBase::Get(int) - array index out of range");
+		return buffer[index];
+	}
+	T& operator[](int index){
+		CHECK_ERROR(index >= 0 && index < count, L"ArrayBase::operator[](int) - array index out of range");
+		return buffer[index];
+	}
+};
+/// Why two types needed?
+template<typename T,typename K = typename KeyType<T>::Type>
+class ListBase abstract : public ArrayBase <T>
+{
+protected:
+	int capacity;
+	bool lessMemoryMode;
+	int CalculateCapacity(int expected)
+	{
+		int result = capacity;
+		if (expected > capacity){
+			result = capacity / 4 * 5 + 1;
+		}
+		return result;
+	}
+	void MakeRoom(int index, int _count){
+		int newCount = ArrayBase<T>::count + _count;
+		if (newCount > capacity){
+			int newCapacity = CalculateCapacity(newCount);
+			T* newBuffer = new T[newCapacity];
+			ListStore<T, POD<T>::Result>::CopyObjects(newBuffer, ArrayBase<T>::buffer, index);
+			ListStore<T, POD<T>::Result>::CopyObjects(newBuffer + index + _count, 
+													  ArrayBase<T>::buffer+index, 
+													  ArrayBase<T>::count-index);
+			delete[] ArrayBase<T>::buffer;
+			ArrayBase<T>::buffer = newBuffer;
+			capacity = newCapacity;
+		}
+		else
+		{
+			ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer+index+_count, 
+													  ArrayBase<T>::buffer, 
+													  ArrayBase<T>::count-index);
+		}
+		ArrayBase<T>::count = newCount;
+	}
+	void ReleaseUnnecessaryBuffer(int previousCount){
+		
+	}
+public:
+	ListBase(){
+		ArrayBase<T>::count = 0;
+		ArrayBase<T>::buffer = 0;
+		capacity = 0;
+		lessMemoryMode = true;
+	}
+	~ListBase()
+	{
+		delete[] ArrayBase<T>::buffer;
+	}
+	void SetLessMemoryMode(bool mode){
+		lessMemoryMode = mode;
+	}
+	bool RemoveAt(int index){
+		CHECK_ERROR(index >= 0 && index < this->Count(), L"ListBase<T,K>::removeAt(int)-List index out of range");
+		int previousCount = ArrayBase<T>::count;
+		ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer+index,
+												  ArrayBase<T>::buffer+index+1,
+												  ArrayBase<T>::count-index-1
+												  );
+		ArrayBase<T>::count--;
+		//
+		return true;
+	}
+	bool RemoveRange(int index, int _count){
+		CHECK_ERROR(index>=0 && index<ArrayBase<T>::count,L"ListBase<T,K>::removeRange(int,int)-List index out of range")
+		CHECK_ERROR(index+_count >= 0 && index + _count < ArrayBase<T>::count, L"ListBase<T,K>::removeRange(int,int)-index+_count out of range");
+		int previousCount = ArrayBase<T>::count;
+		ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer + index,
+												  ArrayBase<T>::buffer + index + _count,
+												  ArrayBase<T>::count - index -_count
+												  );
+		ArrayBase<T>::count -= _count;
+		//
+		return true;
+	}
+	bool Clear(){
+		capacity = 0;
+		if (lessMemoryMode){
+			ListStore<T, POD<T>::Result>::Clear(ArrayBase<T>::buffer,
+												ArrayBase<T>::count);
+
+		}
+		else
+		{
+
+		}
+	}
+};
+
+
 #endif
