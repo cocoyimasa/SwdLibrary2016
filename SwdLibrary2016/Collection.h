@@ -3,25 +3,6 @@
 #include <iostream>
 #include "Common.h"
 
-class Object
-{
-public:
-	virtual ~Object(){}
-};
-
-class NotCopyable{
-private:
-	NotCopyable(const NotCopyable&){}
-	NotCopyable& operator=(const NotCopyable&){ return *this; }
-public:
-	NotCopyable(){}
-};
-
-class Interface :private NotCopyable{
-public:
-	virtual ~Interface()
-	{}
-};
 ///=================基础设施 Basic facilities / Foundation=========================
 /// Plain-Old-Data Type 基本数据类型 返回true表示是基本类型
 /// 此处可以充分看出所谓模板元编程其实相当于if...else，或者说模式匹配，此所谓类型计算
@@ -244,19 +225,21 @@ public:
 		:buffer(0), count(0)
 	{}
 	///CreateEnumerator,Count,Get,operator[]
-	IEnumerator<T>* CreateEnumerator()
+	IEnumerator<T>* CreateEnumerator()const
 	{
-		return;
+		return new Enumerator(this);
 	}
 	int Count()const{
 		return count;
 	}
 	const T& Get(int index){
-		CHECK_ERROR(index >= 0 && index < count, L"ArrayBase::Get(int) - array index out of range");
+		CHECK_ERROR(index >= 0 && index < count, 
+					L"ArrayBase::Get(int) - array index out of range");
 		return buffer[index];
 	}
 	T& operator[](int index){
-		CHECK_ERROR(index >= 0 && index < count, L"ArrayBase::operator[](int) - array index out of range");
+		CHECK_ERROR(index >= 0 && index < count, 
+					L"ArrayBase::operator[](int) - array index out of range");
 		return buffer[index];
 	}
 };
@@ -329,7 +312,8 @@ public:
 		lessMemoryMode = mode;
 	}
 	bool RemoveAt(int index){
-		CHECK_ERROR(index >= 0 && index < this->Count(), L"ListBase<T,K>::removeAt(int)-List index out of range");
+		CHECK_ERROR(index >= 0 && index < this->Count(), 
+					L"ListBase<T,K>::removeAt(int)-List index out of range");
 		int previousCount = ArrayBase<T>::count;
 		ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer+index,
 												  ArrayBase<T>::buffer+index+1,
@@ -340,7 +324,8 @@ public:
 		return true;
 	}
 	bool RemoveRange(int index, int _count){
-		CHECK_ERROR(index>=0 && index<ArrayBase<T>::count,L"ListBase<T,K>::removeRange(int,int)-List index out of range")
+		CHECK_ERROR(index>=0 && index<ArrayBase<T>::count,
+					L"ListBase<T,K>::removeRange(int,int)-List index out of range")
 		CHECK_ERROR(index+_count >= 0 && index + _count < ArrayBase<T>::count, L"ListBase<T,K>::removeRange(int,int)-index+_count out of range");
 		int previousCount = ArrayBase<T>::count;
 		ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer + index,
@@ -365,6 +350,120 @@ public:
 		return true;
 	}
 };
+template<typename T,typename K = KeyType<T>::Type>
+class Array : public ArrayBase <T> {
+protected:
+	void Create(int size){
+		if (size > 0){
+			ArrayBase<T>::buffer = new T[size];
+			ArrayBase<T>::count = size;
+		}
+		else
+		{
+			ArrayBase<T>::buffer = 0;
+			ArrayBase<T>::count = 0;
+		}
+	}
+	void Destroy(){
+		delete[] ArrayBase<T>::buffer;
+		ArrayBase<T>::buffer = 0;
+		ArrayBase<T>::count = 0;
+	}
+public:
+	Array(int size=0){
+		Create(size);
+	}
+	Array(const T* _buffer, int size){
+		Create(size);
+		ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer, _buffer, size);
+	}
+	~Array(){
+		Destroy();
+	}
+	bool Contains(const K& item)const{
+		return indexOf(item) != -1;
+	}
+	int indexOf(const K& item)const {
+		for (int i = 0; i < ArrayBase<T>::count; i++){
+			if (ArrayBase<T>::buffer[i] == item){
+				return i;
+			}
+		}
+		return -1;
+	}
+	void Set(int index, const T& value){
+		CHECK_ERROR(index >= 0 && index<ArrayBase<T>::count, L"Array<T,K>::Set(int,T)-Array index out of range")
+		ArrayBase<T>::buffer[index] = value;
+	}
+	using ArrayBase<T>::operator[];
+	T& operator[](int index){
+		CHECK_ERROR(index >= 0 && index<ArrayBase<T>::count, L"Array<T,K>::Set(int,T)-Array index out of range")
+		return ArrayBase<T>::buffer[index];
+	}
+	void Resize(int size){
+		///除旧布新
+		int oldCount = ArrayBase<T>::count;
+		T* oldBuffer = ArrayBase<T>::buffer;
+		Create(size);
+		ListStore<T, POD<T>::Result>::CopyObjects(ArrayBase<T>::buffer, oldBuffer, size > oldCount ? oldCount : size);
+		delete[] oldBuffer;
+	}
+};
+template<typename T,typename K = KeyType<T>::Type>
+class List : public ListBase < T > {
+public:
+	List(){
 
-
+	}
+	bool Contains(const K& item)const{
+		return IndexOf(item) != -1;
+	}
+	int IndexOf(const K& item)const{
+		for (int i = 0; i < ArrayBase<T>::count; i++){
+			if (ArrayBase<T>::buffer[i] == item){
+				return i;
+			}
+		}
+		return -1;
+	}
+	int Add(const T& item){
+		ListBase<T, K>::MakeRoom(ArrayBase<T>::count, 1);//now count has added 1
+		ArrayBase<T>::buffer[count - 1] = item;
+		return ArrayBase<T>::count - 1;//return the index
+	}
+	int Insert(int index, const T& item)
+	{
+		CHECK_ERROR(index >= 0 && index < ArrayBase<T>::count, 
+					L"List::Insert(const T&,int) - index out of range");
+		ListBase<T, K>::MakeRoom(index, 1);
+		ArrayBase<T>::buffer[index] = item;
+		return index;
+	}
+	bool Remove(const K& item)
+	{
+		int index = IndexOf(item);
+		if (index >= 0 && index < ArrayBase<T>::count)
+		{
+			ListBase<T,K>::RemoveAt(index);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	bool Set(int index,const T& item)
+	{
+		CHECK_ERROR(index >= 0 && index < ArrayBase<T>::count,
+					L"List::Set(int,const T&) - index out of range");
+		ArrayBase<T>::buffer[index] = item;
+		return true;
+	}
+	using ListBase<T, K>::operator[];
+	T& operator[](int index){
+		CHECK_ERROR(index >= 0 && index < ArrayBase<T>::count,
+					L"List::operator[](int) - index out of range");
+		return ArrayBase<T>::buffer[index];
+	}
+};
 #endif

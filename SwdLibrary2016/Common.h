@@ -3,7 +3,24 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+class Object
+{
+public:
+	virtual ~Object(){}
+};
+class NotCopyable{
+private:
+	NotCopyable(const NotCopyable&){}
+	NotCopyable& operator=(const NotCopyable&){ return *this; }
+public:
+	NotCopyable(){}
+};
 
+class Interface :private NotCopyable{
+public:
+	virtual ~Interface()
+	{}
+};
 class Error{
 protected:
 	const wchar_t* description;
