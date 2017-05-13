@@ -5,6 +5,7 @@ SwdLibrary
 ![build](https://img.shields.io/wercker/ci/wercker/docs.svg)
 ![license](https://img.shields.io/aur/license/yaourt.svg)
 
-Libraries and Compilers,or Something else.
+Read some libraries written by others.
 
+all code is not written by myself. 
 -----------------------------------------------
